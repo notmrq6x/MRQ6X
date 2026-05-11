@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mindlop 3D Forge | Local Version</title>
+  <style>
+    :root {
+      --bg: #09090b;
+      --text: #fafafa;
+      --primary: #8b5cf6;
+      --accent: #d946ef;
+      --box-bg: #18181b;
+    }
+    
+    body {
+      background-color: var(--bg);
+      color: var(--text);
+      font-family: 'Segoe UI', sans-serif;
+      text-align: center;
+      margin: 0;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+    }
+
+    h1 { margin-bottom: 5px; font-size: 2.5rem; }
+    h1 span { 
+      background: linear-gradient(to right, var(--primary), var(--accent));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    p { color: #a1a1aa; margin-bottom: 30px; font-size: 14px; }
+
+    #upload-box {
+      border: 2px dashed var(--primary);
+      border-radius: 15px;
+      padding: 40px 20px;
+      width: 100%;
+      max-width: 360px;
+      background: var(--box-bg);
+      cursor: pointer;
+      transition: all 0.3s ease;
+    }
+    
+    #file-input { display: none; }
+
+    #status-area {
+      display: none;
+      margin-top: 20px;
+      width: 100%;
+      max-width: 400px;
+      background: var(--box-bg);
+      padding: 20px;
+      border-radius: 10px;
+      border: 1px solid #27272a;
+    }
+
+    .loader {
+      border: 4px solid #27272a;
+      border-top: 4px solid var(--accent);
+      border-radius: 50%;
+      width: 30px;
+      height: 30px;
+      animation: spin 1s linear infinite;
+      margin: 0 auto 15px auto;
+    }
+
+    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+    .btn {
+      background: linear-gradient(90deg, var(--primary), var(--accent));
+      color: white;
+      border: none;
+      padding: 15px;
+      border-radius: 8px;
+      font-size: 16px;
+      font-weight: bold;
+      cursor: pointer;
+      width: 100%;
+      margin-top: 15px;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>Mindlop <span>3D Forge</span></h1>
+  <p>Local Version - Bypassing Module Security</p>
+
+  <div id="upload-box" onclick="document.getElementById('file-input').click();">
+    <h2>Select Anime Image</h2>
+    <p>Tap to browse files</p>
+    <input type="file" id="file-input" accept="image/*">
+  </div>
+
+  <div id="status-area">
+    <div id="loading-spinner" class="loader"></div>
+    <h3 id="status-text">Uploading...</h3>
+    <p id="status-detail">Converting image to raw data format.</p>
+    <button id="download-btn" class="btn" style="display: none;" onclick="downloadModel()">Download .OBJ</button>
+  </div>
+
+  <script>
+    let generatedModelUrl = "";
+
+    // 1. Convert the image file to a Base64 string so we can send it raw
+    function fileToBase64(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = error => reject(error);
+      });
+    }
+
+    document.getElementById('file-input').addEventListener('change', async (event) => {
+      const file = event.target.files[0];
+      if (!file) return;
+
+      document.getElementById('upload-box').style.display = 'none';
+      document.getElementById('status-area').style.display = 'block';
+      const statusText = document.getElementById('status-text');
+      const statusDetail = document.getElementById('status-detail');
+
+      try {
+        statusText.innerText = "Processing Image...";
+        statusDetail.innerText = "Encoding image data...";
+        
+        // Convert image
+        const base64Image = await fileToBase64(file);
+
+        statusText.innerText = "Connecting to AI...";
+        statusDetail.innerText = "Sending raw data to free public servers...";
+
+        // 2. Direct Vanilla Fetch to the Hugging Face API
+        const response = await fetch("https://stabilityai-triposr.hf.space/api/predict", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            data: [
+              base64Image, // The image data
+              true,        // Remove background
+              85           // Resolution quality
+            ]
+          })
+        });
+
+        if (!response.ok) {
+          throw new Error(`Server responded with status: ${response.status}`);
+        }
+
+        const result = await response.json();
+
+        // 3. Extract the 3D model URL from the API response
+        if (result.data && result.data[0] && result.data[0].url) {
+          // Sometimes the API returns a relative path, so we force the full URL
+          let modelPath = result.data[0].url;
+          if (modelPath.startsWith('/')) {
+             modelPath = "https://stabilityai-triposr.hf.space" + modelPath;
+          }
+          
+          generatedModelUrl = modelPath;
+          
+          document.getElementById('loading-spinner').style.display = 'none';
+          statusText.innerText = "Generation Complete!";
+          statusDetail.innerText = "Your model is ready to import into Prisma 3D.";
+          document.getElementById('download-btn').style.display = 'block';
+        } else {
+          throw new Error("AI completed but didn't return a file link.");
+        }
+
+      } catch (error) {
+        document.getElementById('loading-spinner').style.display = 'none';
+        statusText.innerText = "Connection Blocked or Failed";
+        statusDetail.innerText = "Error: " + error.message + " (If it says 'Failed to fetch', Android is still blocking the connection. You will need to use GitHub Pages).";
+      }
+    });
+
+    window.downloadModel = function() {
+      if (generatedModelUrl) {
+        window.open(generatedModelUrl, '_blank');
+        // Reset UI
+        document.getElementById('status-area').style.display = 'none';
+        document.getElementById('upload-box').style.display = 'block';
+        document.getElementById('file-input').value = ''; 
+        document.getElementById('download-btn').style.display = 'none';
+        document.getElementById('loading-spinner').style.display = 'block';
+      }
+    };
+  </script>
+
+</body>
+  </html>
+  
